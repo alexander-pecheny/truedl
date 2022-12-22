@@ -3,11 +3,10 @@
 import os
 import json
 import time
-import functools
 
 import requests
 
-_open = functools.partial(open, encoding="utf8")
+from .util import _open
 
 API = "https://api.rating.chgk.net"
 SLEEP = 1

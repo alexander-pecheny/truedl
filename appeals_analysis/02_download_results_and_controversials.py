@@ -3,11 +3,11 @@
 import os
 import json
 import argparse
-import functools
 
 import requests
 
-_open = functools.partial(open, encoding="utf8")
+from .util import _open, parse_date
+
 
 TOURNAMENTS_DIR = "tournaments"
 RESULTS_DIR = "tournament_results"
@@ -34,9 +34,11 @@ def main():
             continue
         if info["type"]["name"] != "Синхрон":
             continue
-        if info["dateStart"].split("T")[0] < args.date_from:
-            continue
-        if info["dateStart"].split("T")[0] > args.date_to:
+        if (
+            not parse_date(args.date_from)
+            <= parse_date(info["dateStart"])
+            <= parse_date(args.date_to)
+        ):
             continue
         results_file_name = os.path.join(
             RESULTS_DIR, f"tournament-{info['id']}-results.json"
