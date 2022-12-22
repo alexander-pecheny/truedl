@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import os
-import json
 import time
 
+import orjson as json
 import requests
 
 from .util import _open

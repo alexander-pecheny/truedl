@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import os
-import json
 import argparse
 
+import orjson as json
 import requests
 
 from .util import _open, parse_date
