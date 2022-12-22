@@ -5,11 +5,26 @@ import os
 from collections import Counter
 
 import orjson as json
+import requests
 
-from .util import _open, parse_date
+from .util import (
+    _open,
+    parse_date,
+    RESULTS_DIR,
+    INFO_DIR,
+    APPEALS_DIR,
+    TournamentDataPoint,
+    API,
+)
 
-RESULTS_DIR = "tournament_results"
-INFO_DIR = "tournaments"
+
+def get_controversials(res):
+    result = {}
+    for element in res:
+        if "controversials" in element:
+            for controversial in element["controversials"]:
+                result[controversial["id"]] = controversial["status"]
+    return result
 
 
 def main():
@@ -22,7 +37,10 @@ def main():
     args.date_from = parse_date(args.date_from)
     args.date_to = parse_date(args.date_to)
 
-    counter = Counter()
+    if not os.path.isdir(APPEALS_DIR):
+        os.mkdir(APPEALS_DIR)
+
+    data = []
     for fn in os.listdir(RESULTS_DIR):
         if not fn.endswith(".json"):
             continue
@@ -35,11 +53,44 @@ def main():
             info = json.loads(f.read())
         if not (
             args.date_from <= parse_date(info["dateStart"]) <= args.date_to
+            and args.date_from <= parse_date(info["dateEnd"]) <= args.date_to
         ):
             continue
-        counter[f"{tourn_id} {info['name']}"] = len(res)
-    for i, tup in enumerate(counter.most_common(args.top_n)):
-        print(f"{i + 1}. {tup[0]} - {tup[1]} команд")
+        controversials = get_controversials(res)
+        accepted_controversials = Counter(controversials.values())["A"]
+        appeals_file_path = os.path.join(APPEALS_DIR, fn)
+        if not os.path.isfile(appeals_file_path):
+            print(f"downloading appeals for {tourn_id} {info['name']}...")
+            appeals = requests.get(f"{API}/tournaments/{tourn_id}/appeals.json").json()
+            with open(appeals_file_path, "wb") as f:
+                f.write(json.dumps(appeals))
+        else:
+            with _open(appeals_file_path, "r") as f:
+                appeals = json.loads(f.read())
+        accepted_appeals = len([x for x in appeals if x["status"] == "A"])
+        data_point = TournamentDataPoint(
+            id=tourn_id,
+            name=info["name"],
+            teams=len(res),
+            controversials=len(controversials),
+            controversials_accept_rate=round(
+                accepted_controversials / len(controversials) * 100.0, 2
+            )
+            if controversials
+            else 0,
+            appeals=len(appeals),
+            appeals_accept_rate=round(
+                accepted_appeals / len(appeals) * 100.0, 2
+            ) if appeals else 0
+        )
+        data.append(data_point)
+    srt = sorted(data, key=lambda x: x.appeals, reverse=True)
+    with open(f"tournament_stats_{args.date_from}_{args.date_to}.json", "wb") as f:
+        f.write(json.dumps(srt))
+    for i, el in enumerate(srt[:200]):
+        print(
+            f"{i + 1}. {el.id} {el.name} - {el.teams} команд, {el.appeals} апелляций, {el.appeals_accept_rate} AR апелляций, {el.controversials} спорных, {el.controversials_accept_rate} AR спорных"
+        )
 
 
 if __name__ == "__main__":
