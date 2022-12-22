@@ -6,6 +6,7 @@ from collections import Counter
 
 import orjson as json
 import requests
+import pyexcel
 
 from .util import (
     _open,
@@ -25,6 +26,11 @@ def get_controversials(res):
             for controversial in element["controversials"]:
                 result[controversial["id"]] = controversial["status"]
     return result
+
+def get_people(info, field):
+    return " ,".join(
+        f"{p['name']} {p['surname']}" for p in info[field]
+    )
 
 
 def main():
@@ -68,6 +74,9 @@ def main():
             with _open(appeals_file_path, "r") as f:
                 appeals = json.loads(f.read())
         accepted_appeals = len([x for x in appeals if x["status"] == "A"])
+        editors = get_people(info, "editors")
+        game_jury = get_people(info, "gameJury")
+        appeal_jury = get_people(info, "appealJury")
         data_point = TournamentDataPoint(
             id=tourn_id,
             name=info["name"],
@@ -81,16 +90,31 @@ def main():
             appeals=len(appeals),
             appeals_accept_rate=round(
                 accepted_appeals / len(appeals) * 100.0, 2
-            ) if appeals else 0
+            ) if appeals else 0,
+            editors=editors,
+            game_jury=game_jury,
+            appeal_jury=appeal_jury,
         )
         data.append(data_point)
     srt = sorted(data, key=lambda x: x.appeals, reverse=True)
     with open(f"tournament_stats_{args.date_from}_{args.date_to}.json", "wb") as f:
         f.write(json.dumps(srt))
+    headers = [
+        "num",
+        "id",
+        "name",
+        "teams",
+        "controversials",
+        "controversials_accept_rate",
+        "appeals",
+        "appeals_accept_rate",
+    ]
+    excel_data = [headers]
     for i, el in enumerate(srt[:200]):
-        print(
-            f"{i + 1}. {el.id} {el.name} - {el.teams} команд, {el.appeals} апелляций, {el.appeals_accept_rate} AR апелляций, {el.controversials} спорных, {el.controversials_accept_rate} AR спорных"
-        )
+        row = [i + 1] + [getattr(el, h) for h in headers[1:]]
+        excel_data.append(row)
+    pyexcel.save_as(array=excel_data, dest_file_name=f"tournament_stats_{args.date_from}_{args.date_to}.xlsx")
+
 
 
 if __name__ == "__main__":

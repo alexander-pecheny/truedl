@@ -24,3 +24,6 @@ class TournamentDataPoint:
     controversials_accept_rate: float
     appeals: int
     appeals_accept_rate: float
+    editors: str
+    game_jury: str
+    appeal_jury: str
