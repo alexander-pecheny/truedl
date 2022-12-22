@@ -27,10 +27,9 @@ def get_controversials(res):
                 result[controversial["id"]] = controversial["status"]
     return result
 
+
 def get_people(info, field):
-    return " ,".join(
-        f"{p['name']} {p['surname']}" for p in info[field]
-    )
+    return ", ".join(f"{p['name']} {p['surname']}" for p in info[field])
 
 
 def main():
@@ -88,9 +87,9 @@ def main():
             if controversials
             else 0,
             appeals=len(appeals),
-            appeals_accept_rate=round(
-                accepted_appeals / len(appeals) * 100.0, 2
-            ) if appeals else 0,
+            appeals_accept_rate=round(accepted_appeals / len(appeals) * 100.0, 2)
+            if appeals
+            else 0,
             editors=editors,
             game_jury=game_jury,
             appeal_jury=appeal_jury,
@@ -108,13 +107,18 @@ def main():
         "controversials_accept_rate",
         "appeals",
         "appeals_accept_rate",
+        "editors",
+        "game_jury",
+        "appeal_jury",
     ]
     excel_data = [headers]
     for i, el in enumerate(srt[:200]):
         row = [i + 1] + [getattr(el, h) for h in headers[1:]]
         excel_data.append(row)
-    pyexcel.save_as(array=excel_data, dest_file_name=f"tournament_stats_{args.date_from}_{args.date_to}.xlsx")
-
+    pyexcel.save_as(
+        array=excel_data,
+        dest_file_name=f"tournament_stats_{args.date_from}_{args.date_to}.xlsx",
+    )
 
 
 if __name__ == "__main__":
