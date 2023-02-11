@@ -19,23 +19,31 @@ def main():
 
     if os.path.isfile("tournaments/tournaments.json"):
         with _open("tournaments/tournaments.json", "r") as f:
-            tournaments = json.loads(f.read())
+            tournaments = json.loads(f.read() or "[]")
     else:
         tournaments = []
-        page = 1
-        req = requests.get(f"{API}/tournaments.json?itemsPerPage=100&page={page}")
+    tournament_ids = {x["id"] for x in tournaments}
+    ITEMS_PER_PAGE = 100
+    page = len(tournaments) // ITEMS_PER_PAGE + 1
+    req = requests.get(f"{API}/tournaments.json?itemsPerPage={ITEMS_PER_PAGE}&page={page}")
+    res = req.json()
+    time.sleep(SLEEP)
+    for x in res:
+        if x["id"] not in tournament_ids:
+            tournaments.append(x)
+            tournament_ids.add(x["id"])
+    while len(res) == 100:
+        page += 1
+        print(f"processing page {page}...")
+        req = requests.get(f"{API}/tournaments.json?itemsPerPage={ITEMS_PER_PAGE}&page={page}")
         res = req.json()
+        for x in res:
+            if x["id"] not in tournament_ids:
+                tournaments.append(x)
+                tournament_ids.add(x["id"])
         time.sleep(SLEEP)
-        tournaments.extend(res)
-        while len(res) == 100:
-            page += 1
-            print(f"processing page {page}...")
-            req = requests.get(f"{API}/tournaments.json?itemsPerPage=100&page={page}")
-            res = req.json()
-            time.sleep(SLEEP)
-            tournaments.extend(res)
-        with _open("tournaments/tournaments.json", "w") as f:
-            f.write(json.dumps(tournaments))
+    with open("tournaments/tournaments.json", "wb") as f:
+        f.write(json.dumps(tournaments))
 
     for t in tournaments:
         dest_file_name = f"tournaments/tournament-{t['id']}.json"
@@ -45,7 +53,7 @@ def main():
             print(f"downloading tournament {t['id']} {t['name']}...")
             req = requests.get(f"{API}/tournaments/{t['id']}.json")
             res = req.json()
-            with _open(dest_file_name, "w") as f:
+            with open(dest_file_name, "wb") as f:
                 f.write(json.dumps(res))
 
 

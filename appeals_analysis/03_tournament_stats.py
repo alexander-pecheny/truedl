@@ -110,10 +110,18 @@ def main():
         "editors",
         "game_jury",
         "appeal_jury",
+        "appeals_running_sum",
+        "controversials_running_sum"
     ]
     excel_data = [headers]
+    appeals_running_sum = 0
+    controversials_running_sum = 0
     for i, el in enumerate(srt[:200]):
-        row = [i + 1] + [getattr(el, h) for h in headers[1:]]
+        row = [i + 1] + [getattr(el, h) for h in headers[1:-2]]
+        appeals_running_sum += el.appeals
+        controversials_running_sum += el.controversials
+        row.append(appeals_running_sum)
+        row.append(controversials_running_sum)
         excel_data.append(row)
     pyexcel.save_as(
         array=excel_data,

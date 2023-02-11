@@ -16,8 +16,8 @@ API = "https://api.rating.chgk.net"
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--date-from", default="2022-01-01")
-    parser.add_argument("--date-to", default="2022-10-29")
+    parser.add_argument("--date-from", default="1970-01-01")
+    parser.add_argument("--date-to", default="2099-12-31")
     args = parser.parse_args()
 
     if not os.path.isdir(TOURNAMENTS_DIR):
@@ -49,7 +49,9 @@ def main():
         req = requests.get(
             f"{API}/tournaments/{info['id']}/results.json?includeMasksAndControversials=1"
         ).json()
-        with _open(results_file_name, "w") as f:
+        if not isinstance(req, list):
+            import pdb; pdb.set_trace()
+        with open(results_file_name, "wb") as f:
             f.write(json.dumps(req))
 
 
