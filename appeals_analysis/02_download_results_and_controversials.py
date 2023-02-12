@@ -32,8 +32,6 @@ def main():
             info = json.loads(f.read())
         if not isinstance(info, dict):
             continue
-        if info["type"]["name"] != "Синхрон":
-            continue
         if (
             not parse_date(args.date_from)
             <= parse_date(info["dateStart"])
