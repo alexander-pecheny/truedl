@@ -16,6 +16,7 @@ CREATE_TRUEDL_TABLES = """\
 create table truedl_tournament_data(
     tournament_id integer,
     tournament_name text,
+    tournament_type text,
     tournament_year integer,
     team_category text,
     team_id integer,
@@ -37,6 +38,7 @@ ADD_TRUEDL_DATA_STUB = """\
 insert into truedl_tournament_data (
     tournament_id,
     tournament_name,
+    tournament_type,
     tournament_year,
     team_category,
     team_id,
@@ -130,6 +132,7 @@ def add_to_db(conn, data_points):
             "(" + ",".join([
                 repr(point["tournament_id"]),
                 repr(point["tournament_name"]),
+                repr(point["tournament_type"]),
                 repr(point["tournament_year"]),
                 repr(point["team_category"]),
                 repr(point["team_id"]),
@@ -192,7 +195,10 @@ def main():
 
     for t_info in t_infos:
         if not t_info.get("tournamentInRatingBalanced"):
-            continue
+            prefix = ""
+        else:
+            prefix = "(R) "
+        tournament_type = f"{prefix}{t_info['type']['name']}"
         date_start = parse_date(t_info["dateStart"])
         if date_start not in releases:
             continue
@@ -231,6 +237,7 @@ def main():
             data_points.append({
                 "tournament_id": t_info["id"],
                 "tournament_name": t_info["name"],
+                "tournament_type": tournament_type,
                 "tournament_year": date_start.year,
                 "team_category": category,
                 "total_questions": total_questions,
@@ -242,15 +249,6 @@ def main():
             })
         if data_points:
             add_to_db(conn, data_points)
-
-
-
-
-
-
-    
-    
-
 
 
 if __name__ == "__main__":

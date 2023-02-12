@@ -47,6 +47,8 @@ def main():
         req = requests.get(
             f"{API}/tournaments/{info['id']}/results.json?includeMasksAndControversials=1"
         ).json()
+        if not isinstance(req, list) and req["title"] == "An error occurred":
+            continue
         if not isinstance(req, list):
             import pdb; pdb.set_trace()
         with open(results_file_name, "wb") as f:
