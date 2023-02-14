@@ -14,6 +14,13 @@ RESULTS_DIR = "tournament_results"
 API = "https://api.rating.chgk.net"
 
 
+def clean_personal_data(results):
+    for res in results:
+        for entry in res["teamMembers"]:
+            player = entry.pop("player")
+            entry["player_id"] = player["id"]
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--date-from", default="1970-01-01")
@@ -45,12 +52,17 @@ def main():
             continue
         print(f"downloading results from tournament {info['id']} {info['name']}...")
         req = requests.get(
-            f"{API}/tournaments/{info['id']}/results.json?includeMasksAndControversials=1"
+            f"{API}/tournaments/{info['id']}/results.json"
+            "?includeMasksAndControversials=1"
+            "&includeRatingB=1"
+            "&includeTeamMembers=1"
+            "&includeTeamFlags=1"
         ).json()
         if not isinstance(req, list) and req["title"] == "An error occurred":
             continue
         if not isinstance(req, list):
             import pdb; pdb.set_trace()
+        clean_personal_data(req)
         with open(results_file_name, "wb") as f:
             f.write(json.dumps(req))
 
