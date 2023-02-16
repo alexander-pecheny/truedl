@@ -137,6 +137,10 @@ def avg(list_):
     return sum(list_) / len(list_)
 
 
+def is_in_rating(res):
+    return (res.get("rating") or {}).get("inRating")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--tournament_info_dir", default="tournaments")
@@ -187,12 +191,14 @@ def main():
         if not total_questions:
             continue
         print(f"processing tournament {t_info['id']} {t_info['name']}...")
-        team_ids = {x["team"]["id"] for x in results}
+        team_ids = {x["team"]["id"] for x in results if is_in_rating(x)}
         rating_positions = get_rating_positions(rdb_cur, release_id, team_ids)
         if "1-10" not in rating_positions.values():
             continue
         by_category = defaultdict(list)
         for res in results:
+            if not is_in_rating(res):
+                continue
             team_id = res["team"]["id"]
             category = rating_positions.get(team_id)
             if not category:
