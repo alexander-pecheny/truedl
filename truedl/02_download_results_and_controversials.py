@@ -19,6 +19,12 @@ def clean_personal_data(results):
         for entry in res["teamMembers"]:
             player = entry.pop("player")
             entry["player_id"] = player["id"]
+        synchRequest = res.get("synchRequest", None)
+        if not synchRequest:
+            return
+        venue = synchRequest.pop("venue", None)
+        if venue:
+            synchRequest["venue"] = {"id": venue["id"]}
 
 
 def main():

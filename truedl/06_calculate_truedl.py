@@ -9,7 +9,7 @@ import sys
 
 import orjson
 
-from appeals_analysis.util import parse_date, _open
+from truedl.util import parse_date, _open
 
 
 CREATE_TRUEDL_TABLES = """\

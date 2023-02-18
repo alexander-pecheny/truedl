@@ -12,6 +12,16 @@ API = "https://api.rating.chgk.net"
 SLEEP = 1
 
 
+def clean_org(tourn):
+    for key in ("orgcommittee", "editors", "gameJury", "appealJury"):
+        if not isinstance(tourn, dict):
+            return
+        list_ = tourn.get(key, None)
+        if not list_ or not isinstance(list_, list):
+            continue
+        tourn[key] = [{"id": x["id"]} for x in list_]
+
+
 def main():
 
     if not os.path.isdir("tournaments"):
@@ -25,7 +35,9 @@ def main():
     tournament_ids = {x["id"] for x in tournaments}
     ITEMS_PER_PAGE = 100
     page = len(tournaments) // ITEMS_PER_PAGE + 1
-    req = requests.get(f"{API}/tournaments.json?itemsPerPage={ITEMS_PER_PAGE}&page={page}")
+    req = requests.get(
+        f"{API}/tournaments.json?itemsPerPage={ITEMS_PER_PAGE}&page={page}"
+    )
     res = req.json()
     time.sleep(SLEEP)
     for x in res:
@@ -35,7 +47,9 @@ def main():
     while len(res) == 100:
         page += 1
         print(f"processing page {page}...")
-        req = requests.get(f"{API}/tournaments.json?itemsPerPage={ITEMS_PER_PAGE}&page={page}")
+        req = requests.get(
+            f"{API}/tournaments.json?itemsPerPage={ITEMS_PER_PAGE}&page={page}"
+        )
         res = req.json()
         for x in res:
             if x["id"] not in tournament_ids:
@@ -43,7 +57,7 @@ def main():
                 tournament_ids.add(x["id"])
         time.sleep(SLEEP)
     with open("tournaments/tournaments.json", "wb") as f:
-        f.write(json.dumps(tournaments))
+        f.write(json.dumps([clean_org(x) for x in tournaments]))
 
     for t in tournaments:
         dest_file_name = f"tournaments/tournament-{t['id']}.json"
@@ -54,7 +68,7 @@ def main():
             req = requests.get(f"{API}/tournaments/{t['id']}.json")
             res = req.json()
             with open(dest_file_name, "wb") as f:
-                f.write(json.dumps(res))
+                f.write(json.dumps(clean_org(res)))
 
 
 if __name__ == "__main__":
