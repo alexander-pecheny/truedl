@@ -1,4 +1,6 @@
-requests
+kaleido
 orjson
+plotly
 pyexcel
 pyexcel-xlsx
+requests

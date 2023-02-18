@@ -1,9 +1,7 @@
 set -e
 python -m pip install -r requirements.txt
-python -m appeals_analysis.01_download_tournament_info
-python -m appeals_analysis.02_download_results_and_controversials --date-from 2019-01-01 --date-to 2019-12-31
-python -m appeals_analysis.02_download_results_and_controversials --date-from 2022-01-01 --date-to 2022-10-29
-
-python -m appeals_analysis.03_tournament_stats --date-from 2019-01-01 --date-to 2019-12-31
-python -m appeals_analysis.03_tournament_stats --date-from 2022-01-01 --date-to 2022-10-29
-#  тут руками выбирается топ нефраншизных турниров из топов за 2019 и 2022
+python -m truedl.01_download_tournament_info
+python -m truedl.02_download_results_and_controversials --date-from 2019-01-01 --date-to 2019-12-31
+python -m truedl.04_download_releases
+python -m truedl.05_make_dl_db.py
+python -m truedl.06_calculate_truedl.py
