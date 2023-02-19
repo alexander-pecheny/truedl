@@ -3,10 +3,13 @@
 from collections import Counter, defaultdict
 import argparse
 import datetime
+import functools
 import os
 import sqlite3
 import sys
 
+import numpy as np
+import scipy
 import orjson
 
 from truedl.util import parse_date, _open
@@ -18,20 +21,22 @@ create table truedl_tournament_data(
     tournament_name text,
     tournament_type text,
     tournament_year integer,
-    team_category text,
+    team_position real,
+    team_questions integer,
+    total_questions integer,
     team_id integer,
     team_name text,
-    result_abs integer,
-    hypothetical_result integer,
+    team_rating integer,
+    hypothetical_questions integer,
+    truedl_coeff real,
     truedl real
 );
 """
 
 POSITIONS_QUERY_STUB = """\
-select idteam, rating_position
+select idteam, rating_position, rating
 from chgk_release_data_balanced
-where idrelease = {idrelease}
-and idteam in ({team_ids});    
+where idrelease = {idrelease};    
 """
 
 ADD_TRUEDL_DATA_STUB = """\
@@ -40,11 +45,14 @@ insert into truedl_tournament_data (
     tournament_name,
     tournament_type,
     tournament_year,
-    team_category,
+    team_position,
+    team_questions,
+    total_questions,
     team_id,
     team_name,
-    result_abs,
-    hypothetical_result,
+    team_rating,
+    hypothetical_questions,
+    truedl_coeff,
     truedl
 )
 values 
@@ -77,41 +85,14 @@ def make_release_lookup(releases):
     return result
 
 
-def get_category(position):
-    if not position or position <= 0:
-        return "???"
-    if position <= 10:
-        return "1-10"
-    if position <= 25:
-        return "11-25"
-    if position <= 50:
-        return "26-50"
-    if position <= 100:
-        return "51-100"
-    if position <= 250:
-        return "101-250"
-    if position <= 500:
-        return "251-500"
-    if position <= 1000:
-        return "501-1000"
-    if position <= 2000:
-        return "1001-2000"
-    if position <= 3000:
-        return "2001-3000"
-    if position <= 4000:
-        return "3001-5000"
-    if position <= 5000:
-        return "3001-5000"
-    return "5001+"
-
-
-def get_rating_positions(rdb_cur, release_id, team_ids):
+@functools.cache
+def get_ratings(rdb_cur, release_id):
     teamid_to_position = rdb_cur.execute(
         POSITIONS_QUERY_STUB.format(
-            idrelease=release_id, team_ids=",".join(str(x) for x in team_ids)
+            idrelease=release_id
         )
     ).fetchall()
-    return {x[0]: get_category(x[1]) for x in teamid_to_position}
+    return frozenset(x[2] for x in teamid_to_position)
 
 
 def add_to_db(conn, data_points):
@@ -132,76 +113,71 @@ def add_to_db(conn, data_points):
             "("
             + ",".join(
                 [
-                    repr(point["tournament_id"]),
-                    repr(point["tournament_name"]),
-                    repr(point["tournament_type"]),
-                    repr(point["tournament_year"]),
-                    repr(point["team_category"]),
-                    repr(point["team_id"]),
-                    repr(point["team_name"]),
-                    repr(point["result_abs"]),
-                    repr(point["hypothetical_result"]),
-                    repr(point["truedl"]),
+                    repr(point[k])
+                    for k in [
+                        "tournament_id",
+                        "tournament_name",
+                        "tournament_type",
+                        "tournament_year",
+                        "team_position",
+                        "team_questions",
+                        "total_questions",
+                        "team_id",
+                        "team_name",
+                        "team_rating",
+                        "hypothetical_questions",
+                        "truedl_coeff",
+                        "truedl",
+                    ]
                 ]
             )
             + ")"
         )
     values = ",   ".join(values)
-    cur.execute(ADD_TRUEDL_DATA_STUB.format(values=values))
+    query = ADD_TRUEDL_DATA_STUB.format(values=values)
+    cur.execute(query)
     conn.commit()
-
-
-truedl_dict = {
-    "1-10": 1.61,
-    "11-25": 1.52,
-    "26-50": 1.43,
-    "51-100": 1.32,
-    "101-250": 1.16,
-    "251-500": 1.0,
-    "501-1000": 0.81,
-    "1001-2000": 0.6,
-    "2001-3000": 0.43,
-    "3001-5000": 0.31,
-}
 
 
 def avg(list_):
     return sum(list_) / len(list_)
 
 
-def make_point(
-    res, category, truedl_coeff, total_questions, t_info, tournament_type, date_start
-):
+def make_point(res, total_questions, t_info, tournament_type, date_start):
     team_id = res["team"]["id"]
     team_name = res["team"]["name"]
-    hypothetical_result = min(
-        int(res["questionsTotal"] / truedl_coeff), total_questions
-    )
-    truedl = round((1.0 - (hypothetical_result / total_questions)) * 10.0, 1)
+    rg = get_rating(res)
     return {
         "tournament_id": t_info["id"],
         "tournament_name": t_info["name"],
         "tournament_type": tournament_type,
         "tournament_year": date_start.year,
-        "team_category": category,
+        "team_position": None,
+        "team_questions": res["questionsTotal"],
         "total_questions": total_questions,
+        "hypothetical_questions": None,
         "team_id": team_id,
         "team_name": team_name,
-        "result_abs": res["questionsTotal"],
-        "hypothetical_result": hypothetical_result,
-        "truedl": truedl,
+        "team_rating": rg,
+        "truedl_coeff": None,
+        "truedl": None,
     }
 
 
-def get_uncategorized_category(res, ratings_by_category):
-    srt = sorted(ratings_by_category, key=lambda x: max(ratings_by_category[x]))
-    rg = get_rating(res)
-    if not rg:
-        return
-    for cat in srt:
-        ratings = ratings_by_category[cat]
-        if min(ratings) <= rg <= max(ratings):
-            return cat
+def get_coeff(rank):
+    return round(-0.29 * np.log(rank + 46.8) + 2.75, 2)
+
+
+def calc_truedl(point, rating_to_rank):
+    rank = rating_to_rank[-point["team_rating"]]
+    coeff = get_coeff(rank)
+    hq = int(point["team_questions"] / coeff)
+    tq = point["total_questions"]
+    truedl = (1 - min(hq, tq) / tq) * 10
+    point["hypothetical_questions"] = hq
+    point["truedl"] = truedl
+    point["truedl_coeff"] = coeff
+    point["team_position"] = float(rank)
 
 
 def get_rating(res):
@@ -244,7 +220,7 @@ def main():
             prefix = "(R) "
         tournament_type = f"{prefix}{t_info['type']['name']}"
         date_start = parse_date(t_info["dateStart"])
-        if date_start not in releases:
+        if date_start not in releases or date_start.year < 2017:
             continue
         release_id = releases[date_start]["id"]
         results_filepath = (
@@ -263,51 +239,32 @@ def main():
         if not total_questions:
             continue
         print(f"processing tournament {t_info['id']} {t_info['name']}...")
-        team_ids = {x["team"]["id"] for x in results}
-        rating_positions = get_rating_positions(rdb_cur, release_id, team_ids)
+        ratings = set(get_ratings(rdb_cur, release_id))
         data_points = []
-        uncategorized_teams = []
-        ratings_by_category = defaultdict(list)
         for res in results:
-            team_id = res["team"]["id"]
-            category = rating_positions.get(team_id)
-            if not category and res.get("teamMembers"):
-                uncategorized_teams.append(res)
-                continue
-            truedl_coeff = truedl_dict.get(category)
-            if not truedl_coeff:
-                continue
             if rg := get_rating(res):
-                ratings_by_category[category].append(rg)
-            data_points.append(
-                make_point(
-                    res,
-                    category,
-                    truedl_coeff,
-                    total_questions,
-                    t_info,
-                    tournament_type,
-                    date_start,
+                ratings.add(rg)
+                data_points.append(
+                    make_point(
+                        res,
+                        total_questions,
+                        t_info,
+                        tournament_type,
+                        date_start,
+                    )
                 )
-            )
-        for res in uncategorized_teams:
-            category = get_uncategorized_category(res, ratings_by_category)
-            truedl_coeff = truedl_dict.get(category)
-            if not truedl_coeff:
-                continue
-            data_points.append(
-                make_point(
-                    res,
-                    category,
-                    truedl_coeff,
-                    total_questions,
-                    t_info,
-                    tournament_type,
-                    date_start,
-                )
-            )
-        if data_points:
-            add_to_db(conn, data_points)
+        ratings = np.array([-1 * i for i in ratings])
+        ranks = scipy.stats.rankdata(ratings)
+        rating_to_rank_dict = dict(zip(ratings, ranks))
+        data_points_final = []
+        for dp in data_points:
+            calc_truedl(dp, rating_to_rank_dict)
+            if (
+                dp["team_position"] <= 5000
+            ):
+                data_points_final.append(dp)
+        if data_points_final:
+            add_to_db(conn, data_points_final)
 
 
 if __name__ == "__main__":
