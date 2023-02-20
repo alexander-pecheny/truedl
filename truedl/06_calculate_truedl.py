@@ -193,6 +193,7 @@ def main():
     parser.add_argument("--tournament_results_dir", default="tournament_results")
     parser.add_argument("--rating_db", default="rating.db")
     parser.add_argument("--truedl_db", default="truedl_tournaments.db")
+    parser.add_argument("--debug_id", type=int, default=None)
     args = parser.parse_args()
 
     if not os.path.isfile(args.truedl_db):
@@ -218,6 +219,8 @@ def main():
             prefix = ""
         else:
             prefix = "(R) "
+        if args.debug_id and t_info["id"] != args.debug_id:
+            continue
         tournament_type = f"{prefix}{t_info['type']['name']}"
         date_start = parse_date(t_info["dateStart"])
         if date_start not in releases or date_start.year < 2017:
@@ -238,8 +241,10 @@ def main():
         total_questions = len(mask) - Counter(mask)["X"]
         if not total_questions:
             continue
-        print(f"processing tournament {t_info['id']} {t_info['name']}...")
         ratings = set(get_ratings(rdb_cur, release_id))
+        if not ratings:
+            continue
+        print(f"processing tournament {t_info['id']} {t_info['name']}...")
         data_points = []
         for res in results:
             if rg := get_rating(res):
@@ -263,6 +268,8 @@ def main():
                 dp["team_position"] <= 5000
             ):
                 data_points_final.append(dp)
+        if args.debug_id:
+            import IPython; IPython.embed()
         if data_points_final:
             add_to_db(conn, data_points_final)
 
