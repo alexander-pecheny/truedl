@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 import os
 import argparse
+import datetime
+import time
 
 import orjson as json
 import requests
@@ -54,7 +56,10 @@ def main():
         results_file_name = os.path.join(
             RESULTS_DIR, f"tournament-{info['id']}-results.json"
         )
-        if os.path.isfile(results_file_name):
+        if os.path.isfile(results_file_name) and not (
+            (datetime.date.today() - parse_date(info["dateStart"])).days <= 60
+            and os.stat(results_file_name).st_size <= 2
+        ):
             continue
         print(f"downloading results from tournament {info['id']} {info['name']}...")
         req = requests.get(
@@ -64,6 +69,7 @@ def main():
             "&includeTeamMembers=1"
             "&includeTeamFlags=1"
         ).json()
+        time.sleep(1)
         if not isinstance(req, list) and req["title"] == "An error occurred":
             continue
         if not isinstance(req, list):

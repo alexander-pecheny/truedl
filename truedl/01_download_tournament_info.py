@@ -5,6 +5,7 @@ import time
 
 import orjson as json
 import requests
+import sys
 
 from .util import _open
 
@@ -20,6 +21,7 @@ def clean_org(tourn):
         if not list_ or not isinstance(list_, list):
             continue
         tourn[key] = [{"id": x["id"]} for x in list_]
+    return tourn
 
 
 def main():
@@ -65,8 +67,16 @@ def main():
             continue
         else:
             print(f"downloading tournament {t['id']} {t['name']}...")
-            req = requests.get(f"{API}/tournaments/{t['id']}.json")
-            res = req.json()
+            url = f"{API}/tournaments/{t['id']}.json"
+            req = requests.get(url)
+            time.sleep(SLEEP)
+            try:
+                res = req.json()
+            except Exception as e:
+                sys.stderr.write(
+                    f"error while trying to get info from {url}: {type(e)} {e}\n"
+                )
+                continue
             with open(dest_file_name, "wb") as f:
                 f.write(json.dumps(clean_org(res)))
 

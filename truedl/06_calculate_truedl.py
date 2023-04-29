@@ -3,6 +3,7 @@
 from collections import Counter, defaultdict
 import argparse
 import datetime
+import functools
 import os
 import sqlite3
 import sys
@@ -30,8 +31,7 @@ create table truedl_tournament_data(
 POSITIONS_QUERY_STUB = """\
 select idteam, rating_position
 from chgk_release_data_balanced
-where idrelease = {idrelease}
-and idteam in ({team_ids});    
+where idrelease = {idrelease};    
 """
 
 ADD_TRUEDL_DATA_STUB = """\
@@ -105,13 +105,14 @@ def get_category(position):
     return "5001+"
 
 
-def get_rating_positions(rdb_cur, release_id, team_ids):
+@functools.cache
+def get_rating_positions(rdb_cur, release_id):
     teamid_to_position = rdb_cur.execute(
         POSITIONS_QUERY_STUB.format(
-            idrelease=release_id, team_ids=",".join(str(x) for x in team_ids)
+            idrelease=release_id
         )
     ).fetchall()
-    return {x[0]: get_category(x[1]) for x in teamid_to_position}
+    return tuple({x[0]: get_category(x[1]) for x in teamid_to_position}.items())
 
 
 def add_to_db(conn, data_points):
@@ -217,6 +218,7 @@ def main():
     parser.add_argument("--tournament_results_dir", default="tournament_results")
     parser.add_argument("--rating_db", default="rating.db")
     parser.add_argument("--truedl_db", default="truedl_tournaments.db")
+    parser.add_argument("--debug_id", type=int, default=None)
     args = parser.parse_args()
 
     if not os.path.isfile(args.truedl_db):
@@ -242,6 +244,8 @@ def main():
             prefix = ""
         else:
             prefix = "(R) "
+        if args.debug_id and t_info["id"] != args.debug_id:
+            continue
         tournament_type = f"{prefix}{t_info['type']['name']}"
         date_start = parse_date(t_info["dateStart"])
         if date_start not in releases:
@@ -263,8 +267,7 @@ def main():
         if not total_questions:
             continue
         print(f"processing tournament {t_info['id']} {t_info['name']}...")
-        team_ids = {x["team"]["id"] for x in results}
-        rating_positions = get_rating_positions(rdb_cur, release_id, team_ids)
+        rating_positions = dict(get_rating_positions(rdb_cur, release_id))
         data_points = []
         uncategorized_teams = []
         ratings_by_category = defaultdict(list)
@@ -306,6 +309,8 @@ def main():
                     date_start,
                 )
             )
+        if args.debug_id:
+            import IPython; IPython.embed()
         if data_points:
             add_to_db(conn, data_points)
 
