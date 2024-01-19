@@ -8,7 +8,7 @@
 
 **Базовое использование:**
 
-`python count_truedl_single_tourn.py -t 9372` — посчитает trueDL [турнира с id 9372](https://rating.chgk.info/tournament/9372). Но это не так интересно: trueDL и так показывают на [сайте рейтинга МАИИ](https://rating.maii.li), а для турниров с выложенными пакетами — и на [gotquestions](https://gotquestions.online).
+`python count_truedl_single_tourn.py -t 9372` — посчитает trueDL (а заодно и старый DL, для сравнения) [турнира с id 9372](https://rating.chgk.info/tournament/9372). Но это не так интересно: trueDL и так показывают на [сайте рейтинга МАИИ](https://rating.maii.li), а для турниров с выложенными пакетами — и на [gotquestions](https://gotquestions.online).
 
 Более интересное использование — посчитать trueDL конкретного тура:
 

@@ -83,7 +83,7 @@ def parse_row(rd):
         "team": {"id": rd["IDteam"]},
         "current": {"name": rd["Название"]},
         "questionsTotal": int(rd["Вопросов"] or "0"),
-        "rating": {"inRating": isinstance(rd["Релизный Б"], int)},
+        "rating": {"inRating": isinstance(rd["Релизный Б"], int), "rg": rd["Рейтинг Б"]},
     }
 
 
@@ -153,6 +153,10 @@ def get_result_from_mask(mask, question_numbers):
     return len([x for x in mask if x[1] == "1"])
 
 
+def get_old_dl(questions, total_questions, rg):
+    return round(rg * (total_questions - questions) / total_questions / 500)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--tournament_id", "-t", required=True)
@@ -168,7 +172,7 @@ def main():
     dateStart = parse_date(info["dateStart"])
 
     release_id = get_release_id(dateStart)
-    print(f"using {release_id}")
+    print(f"using release {release_id}")
     ratings = download_release(release_id)
 
     if args.question_numbers == "all":
@@ -188,6 +192,7 @@ def main():
     else:
         for t_id in args.tournament_id.split(","):
             results.extend(requests.get(RESULTS_URL.format(id=t_id)).json())
+    old_dls = []
     truedls = []
     for res in results:
         team_id = res["team"]["id"]
@@ -205,18 +210,31 @@ def main():
             questions = get_result_from_mask(
                 res["mask"], parse_questions_range(args.question_numbers)
             )
+        rg = res["rating"]["rg"]
+        dl = None
+        truedl = None
+        if rg > 3000:
+            dl = get_old_dl(
+                questions, total_questions, rg
+            )
+            if dl is not None:
+                old_dls.append(dl)
+        else:
+            dl = None
         truedl = get_real_truedl(
             questions, total_questions, place_in_rating, log_coeff=args.log_coeff
         )
         if truedl is not None:
-            print(
-                f"team {team_id} {res['current']['name']}, questions {questions}, place {place_in_rating}, truedl {truedl}"
-            )
             truedls.append(truedl)
-        else:
-            print(f"skipping {team_repr}, place in rating {place_in_rating} too low")
-    avg = round(sum(truedls) / len(truedls), 1)
-    print(f"total truedl: {avg}")
+        if dl or truedl:
+            print(
+                f"team {team_id} {res['current']['name']}, questions {questions}, place {place_in_rating}, dl {dl}, truedl {truedl}"
+            )
+    if old_dls:
+        old_avg = round(sum(old_dls) / len(old_dls), 1)
+    if truedls:
+        true_avg = round(sum(truedls) / len(truedls), 1)
+    print(f"final results:\ndl: {old_avg}, truedl: {true_avg}")
 
 
 if __name__ == "__main__":
