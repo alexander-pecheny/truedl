@@ -35,7 +35,7 @@ def parse_date(s):
 
 
 def get_release_id(dateStart):
-    releases = requests.get("https://rating.maii.li/api/v1/b/releases.json").json()
+    releases = requests.get("https://rating.chgk.gg/api/v1/b/releases.json").json()
     time.sleep(0.5)
     for release in releases["items"]:
         if parse_date(release["date"]) <= dateStart:
@@ -49,7 +49,7 @@ def download_release(release_id):
     while True:
         print(f"downloading page {page} of release {release_id}...")
         ratings = requests.get(
-            f"https://rating.maii.li/api/v1/b/teams/{release_id}.json?page={page}"
+            f"https://rating.chgk.gg/api/v1/b/teams/{release_id}.json?page={page}"
         ).json()
         time.sleep(0.5)
         for item in ratings["items"]:
@@ -213,7 +213,7 @@ def main():
         rg = res["rating"]["rg"]
         dl = None
         truedl = None
-        if rg > 3000:
+        if (rg or 0) > 3000:
             dl = get_old_dl(
                 questions, total_questions, rg
             )
@@ -232,8 +232,12 @@ def main():
             )
     if old_dls:
         old_avg = round(sum(old_dls) / len(old_dls), 1)
+    else:
+        old_avg = None
     if truedls:
         true_avg = round(sum(truedls) / len(truedls), 1)
+    else:
+        true_avg = None
     print(f"final results:\ndl: {old_avg}, truedl: {true_avg}")
 
 
