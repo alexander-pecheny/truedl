@@ -157,6 +157,10 @@ def get_old_dl(questions, total_questions, rg):
     return round(rg * (total_questions - questions) / total_questions / 500)
 
 
+def get_avg_dl(dls):
+    return round(sum(dls) / len(dls), 1)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--tournament_id", "-t", required=True)
@@ -194,6 +198,7 @@ def main():
             results.extend(requests.get(RESULTS_URL.format(id=t_id)).json())
     old_dls = []
     truedls = []
+    truedl_by_tour = defaultdict(list)
     for res in results:
         team_id = res["team"]["id"]
         team_repr = f"{team_id} {res['current']['name']}"
@@ -226,19 +231,32 @@ def main():
         )
         if truedl is not None:
             truedls.append(truedl)
+        offset = 0
+        if args.question_numbers == "all":
+            for tour_id in range(len(info["questionQty"])):
+                questions_in_tour = info["questionQty"][str(tour_id + 1)]
+                next_offset = offset + questions_in_tour
+                mask_fragment = res["mask"][offset:next_offset]
+                team_questions_in_tour = len([x for x in mask_fragment if x == "1"])
+                truedl_by_tour[tour_id].append(get_real_truedl(
+                    team_questions_in_tour, questions_in_tour, place_in_rating, log_coeff=args.log_coeff
+                ))
+                offset = next_offset
         if dl or truedl:
             print(
                 f"team {team_id} {res['current']['name']}, questions {questions}, place {place_in_rating}, dl {dl}, truedl {truedl}"
             )
     if old_dls:
-        old_avg = round(sum(old_dls) / len(old_dls), 1)
+        old_avg = get_avg_dl(old_dls)
     else:
         old_avg = None
     if truedls:
-        true_avg = round(sum(truedls) / len(truedls), 1)
+        true_avg = get_avg_dl(truedls)
     else:
         true_avg = None
     print(f"final results:\ndl: {old_avg}, truedl: {true_avg}")
+    for tour_id in sorted(truedl_by_tour):
+        print(f"tour {tour_id + 1}: {get_avg_dl(truedl_by_tour[tour_id])}")
 
 
 if __name__ == "__main__":
