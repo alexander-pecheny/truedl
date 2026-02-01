@@ -2,13 +2,16 @@
 # -*- coding: utf-8 -*-
 import argparse
 import bisect
-from collections import defaultdict
 import datetime
+import json
 import math
+import os
 import time
+from collections import defaultdict
 
 import openpyxl
 import requests
+from mpmath.tests.test_functions import te
 
 RESULTS_URL = (
     "https://api.rating.chgk.net/tournaments/{id}/results.json"
@@ -44,6 +47,15 @@ def get_release_id(dateStart):
 
 
 def download_release(release_id):
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    cache_path = os.path.join(script_dir, f"release_cache_{release_id}.json")
+
+    if os.path.exists(cache_path):
+        print(f"loading release {release_id} from cache...")
+        with open(cache_path, "r") as f:
+            data = json.load(f)
+            return {int(k): v for k, v in data.items()}
+
     result = {}
     page = 1
     while True:
@@ -58,6 +70,10 @@ def download_release(release_id):
             break
         else:
             page += 1
+
+    with open(cache_path, "w") as f:
+        json.dump(result, f)
+
     return result
 
 
@@ -83,7 +99,10 @@ def parse_row(rd):
         "team": {"id": rd["IDteam"]},
         "current": {"name": rd["Название"]},
         "questionsTotal": int(rd["Вопросов"] or "0"),
-        "rating": {"inRating": isinstance(rd["Релизный Б"], int), "rg": rd["Рейтинг Б"]},
+        "rating": {
+            "inRating": isinstance(rd["Релизный Б"], int),
+            "rg": rd["Рейтинг Б"],
+        },
     }
 
 
@@ -104,20 +123,34 @@ def parse_detailed_results(xlsx_file_path):
     wb = openpyxl.load_workbook(xlsx_file_path)
     sheet = wb.active
     header = None
-    result = defaultdict(dict)
+    result = defaultdict(
+        lambda: {
+            "team": {"id": None},
+            "current": {"name": None},
+            "mask": None,
+        }
+    )
     tour_lengths = defaultdict(list)
     for row_ in sheet.rows:
         if header is None:
             header = row_
         else:
             row = [x.value for x in row_ if x.value is not None]
+            if not row:
+                continue
             team_id = row[0]
+            team_name = row[1]
             tour_number = row[3]
+            if tour_number == "Тур":
+                continue
             mask = "".join([str(x) for x in row[4:]])
             tour_lengths[tour_number].append(len(mask))
             result[team_id][tour_number] = mask
+            result[team_id]["team"]["id"] = team_id
+            result[team_id]["current"]["name"] = team_name
     for tour_num in tour_lengths:
         tour_lengths[tour_num] = max(tour_lengths[tour_num])
+
     for team_id in result:
         by_tour = result[team_id]
         final_masks = []
@@ -126,14 +159,11 @@ def parse_detailed_results(xlsx_file_path):
             if len(mask) < tour_lengths[tour_num]:
                 mask += "0" * (tour_lengths[tour_num] - len(mask))
             final_masks.append(mask)
-        result[team_id] = "".join(final_masks)
-    return result
-
-
-def patch_results_from_detailed_xlsx(results, xlsx_file_path):
-    detailed_results = parse_detailed_results(xlsx_file_path)
-    for res in results:
-        res["mask"] = detailed_results[res["team"]["id"]]
+        result[team_id]["mask"] = "".join(final_masks)
+        result[team_id]["questionsTotal"] = len(
+            [x for x in result[team_id]["mask"] if x == "1"]
+        )
+    return list(result.values())
 
 
 def parse_questions_range(str_):
@@ -168,6 +198,7 @@ def main():
     parser.add_argument("--results_from_xlsx_detailed")
     parser.add_argument("--question_numbers", "-q", default="all")
     parser.add_argument("--log_coeff", action="store_true")
+    parser.add_argument("--use_all_teams", action="store_true")
     args = parser.parse_args()
 
     info = requests.get(
@@ -184,15 +215,10 @@ def main():
     else:
         total_questions = len(parse_questions_range(args.question_numbers))
     results = []
-    if args.results_from_xlsx:
-        for fn in args.results_from_xlsx.split(","):
-            results.extend(parse_xlsx(fn))
-        if args.question_numbers != "all":
-            assert args.results_from_xlsx_detailed
-            patch_results_from_detailed_xlsx(
-                results,
-                args.results_from_xlsx_detailed,
-            )
+    if args.results_from_xlsx_detailed:
+        results = parse_detailed_results(
+            args.results_from_xlsx_detailed,
+        )
     else:
         for t_id in args.tournament_id.split(","):
             results.extend(requests.get(RESULTS_URL.format(id=t_id)).json())
@@ -202,7 +228,7 @@ def main():
     for res in results:
         team_id = res["team"]["id"]
         team_repr = f"{team_id} {res['current']['name']}"
-        if not (res["rating"] or {}).get("inRating"):
+        if not (res.get("rating") or {}).get("inRating") and not args.use_all_teams:
             print(f"skipping team {team_repr}, not in rating")
             continue
         if team_id not in ratings:
@@ -215,16 +241,17 @@ def main():
             questions = get_result_from_mask(
                 res["mask"], parse_questions_range(args.question_numbers)
             )
-        rg = res["rating"]["rg"]
-        dl = None
-        truedl = None
-        if (rg or 0) > 3000:
-            dl = get_old_dl(
-                questions, total_questions, rg
-            )
-            if dl is not None:
-                old_dls.append(dl)
-        else:
+        try:
+            rg = res["rating"]["rg"]
+            dl = None
+            truedl = None
+            if (rg or 0) > 3000:
+                dl = get_old_dl(questions, total_questions, rg)
+                if dl is not None:
+                    old_dls.append(dl)
+            else:
+                dl = None
+        except:
             dl = None
         truedl = get_real_truedl(
             questions, total_questions, place_in_rating, log_coeff=args.log_coeff
@@ -238,9 +265,14 @@ def main():
                 next_offset = offset + questions_in_tour
                 mask_fragment = res["mask"][offset:next_offset]
                 team_questions_in_tour = len([x for x in mask_fragment if x == "1"])
-                truedl_by_tour[tour_id].append(get_real_truedl(
-                    team_questions_in_tour, questions_in_tour, place_in_rating, log_coeff=args.log_coeff
-                ))
+                truedl_by_tour[tour_id].append(
+                    get_real_truedl(
+                        team_questions_in_tour,
+                        questions_in_tour,
+                        place_in_rating,
+                        log_coeff=args.log_coeff,
+                    )
+                )
                 offset = next_offset
         if dl or truedl:
             print(
