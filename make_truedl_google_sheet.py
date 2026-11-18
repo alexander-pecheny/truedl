@@ -2,8 +2,11 @@
 # -*- coding: utf-8 -*-
 import argparse
 import bisect
+import csv
 import datetime
+import json
 import math
+import os
 import time
 from collections import defaultdict
 
@@ -46,6 +49,15 @@ def get_release_id(dateStart):
 
 
 def download_release(release_id):
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    cache_path = os.path.join(script_dir, f"release_cache_{release_id}.json")
+
+    if os.path.exists(cache_path):
+        print(f"loading release {release_id} from cache...")
+        with open(cache_path, "r") as f:
+            data = json.load(f)
+            return {int(k): v for k, v in data.items()}
+
     result = {}
     page = 1
     while True:
@@ -60,6 +72,10 @@ def download_release(release_id):
             break
         else:
             page += 1
+
+    with open(cache_path, "w") as f:
+        json.dump(result, f)
+
     return result
 
 
@@ -79,25 +95,73 @@ def get_real_truedl(questions, total_questions, place_in_rating, log_coeff=False
     )
 
 
+def parse_int(value):
+    if value is None:
+        return None
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    value = str(value).strip()
+    if not value:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        pass
+    try:
+        parsed = float(value)
+    except ValueError:
+        return None
+    if parsed.is_integer():
+        return int(parsed)
+    return None
+
+
+def read_table_rows(filepath):
+    if os.path.splitext(filepath)[1].lower() == ".csv":
+        with open(filepath, newline="", encoding="utf-8-sig") as f:
+            yield from csv.reader(f)
+        return
+
+    wb = openpyxl.load_workbook(filepath, read_only=True)
+    sheet = wb.active
+    yield from sheet.iter_rows(values_only=True)
+
+
+def is_empty_row(row):
+    return not any(str(value).strip() for value in row if value is not None)
+
+
+def mask_value(value):
+    if value is None:
+        return "0"
+    parsed = parse_int(value)
+    if parsed is not None:
+        return str(parsed)
+    value = str(value).strip()
+    return value or "0"
+
+
 def parse_row(rd):
-    rd = {k.value: v.value for k, v in rd.items()}
+    release_b = parse_int(rd["Релизный Б"])
     return {
-        "team": {"id": rd["IDteam"]},
+        "team": {"id": parse_int(rd["IDteam"])},
         "current": {"name": rd["Название"]},
-        "questionsTotal": int(rd["Вопросов"] or "0"),
+        "questionsTotal": parse_int(rd["Вопросов"]) or 0,
         "rating": {
-            "inRating": isinstance(rd["Релизный Б"], int),
-            "rg": rd["Рейтинг Б"],
+            "inRating": release_b is not None,
+            "rg": parse_int(rd["Рейтинг Б"]),
         },
     }
 
 
 def parse_xlsx(filepath):
-    wb = openpyxl.load_workbook(filepath)
-    sheet = wb.active
     header = None
     result = []
-    for row in sheet.rows:
+    for row in read_table_rows(filepath):
+        if is_empty_row(row):
+            continue
         if header is None:
             header = row
         else:
@@ -105,40 +169,60 @@ def parse_xlsx(filepath):
     return result
 
 
-def parse_detailed_results(xlsx_file_path):
-    wb = openpyxl.load_workbook(xlsx_file_path)
-    sheet = wb.active
-    header = None
-    result = defaultdict(dict)
+def parse_detailed_results(filepath):
+    result = defaultdict(
+        lambda: {
+            "team": {"id": None},
+            "current": {"name": None},
+            "tours": {},
+        }
+    )
     tour_lengths = defaultdict(list)
-    for row_ in sheet.rows:
-        if header is None:
-            header = row_
-        else:
-            row = [x.value for x in row_ if x.value is not None]
-            team_id = row[0]
-            tour_number = row[3]
-            mask = "".join([str(x) for x in row[4:]])
-            tour_lengths[tour_number].append(len(mask))
-            result[team_id][tour_number] = mask
+    for row in read_table_rows(filepath):
+        if is_empty_row(row) or len(row) < 4:
+            continue
+        team_id = parse_int(row[0])
+        tour_number = parse_int(row[3])
+        if team_id is None or tour_number is None:
+            continue
+        team_name = row[1]
+        mask = "".join(mask_value(x) for x in row[4:])
+        tour_lengths[tour_number].append(len(mask))
+        result[team_id]["team"]["id"] = team_id
+        result[team_id]["current"]["name"] = team_name
+        result[team_id]["tours"][tour_number] = mask
+
     for tour_num in tour_lengths:
         tour_lengths[tour_num] = max(tour_lengths[tour_num])
+
+    rows = []
     for team_id in result:
-        by_tour = result[team_id]
+        res = result[team_id]
+        by_tour = res.pop("tours")
         final_masks = []
         for tour_num in sorted(tour_lengths):
             mask = by_tour.get(tour_num) or ""
             if len(mask) < tour_lengths[tour_num]:
                 mask += "0" * (tour_lengths[tour_num] - len(mask))
             final_masks.append(mask)
-        result[team_id] = "".join(final_masks)
-    return result
+        res["mask"] = "".join(final_masks)
+        res["questionsTotal"] = sum(1 for x in res["mask"] if x == "1")
+        rows.append(res)
+    return rows
 
 
 def patch_results_from_detailed_xlsx(results, xlsx_file_path):
-    detailed_results = parse_detailed_results(xlsx_file_path)
+    detailed_results = {
+        res["team"]["id"]: res["mask"] for res in parse_detailed_results(xlsx_file_path)
+    }
+    patched = 0
     for res in results:
-        res["mask"] = detailed_results[res["team"]["id"]]
+        mask = detailed_results.get(res["team"]["id"])
+        if mask is not None:
+            res["mask"] = mask
+            patched += 1
+    if patched < len(results):
+        print(f"patched masks for {patched}/{len(results)} teams from detailed results")
 
 
 def parse_questions_range(str_):
@@ -204,15 +288,14 @@ class Writer(GoogleSheetWriter):
         if args.results_from_xlsx:
             for fn in args.results_from_xlsx.split(","):
                 results.extend(parse_xlsx(fn))
-            if args.question_numbers != "all":
-                assert args.results_from_xlsx_detailed
-                patch_results_from_detailed_xlsx(
-                    results,
-                    args.results_from_xlsx_detailed,
-                )
         else:
             for t_id in args.tournament_id.split(","):
                 results.extend(requests.get(RESULTS_URL.format(id=t_id)).json())
+        if args.results_from_xlsx_detailed:
+            patch_results_from_detailed_xlsx(
+                results,
+                args.results_from_xlsx_detailed,
+            )
         for res in results:
             team_id = res["team"]["id"]
             team_repr = f"{team_id} {res['current']['name']}"
@@ -227,8 +310,11 @@ class Writer(GoogleSheetWriter):
                 qn = None
             else:
                 qn = parse_questions_range(args.question_numbers)
+            if not res.get("mask"):
+                print(f"skipping team {team_repr}, no detailed mask")
+                continue
             mask, _ = get_result_from_mask(res["mask"], qn)
-            coeff = get_truedl_coeff(place_in_rating)
+            coeff = get_truedl_coeff(place_in_rating, log_coeff=args.log_coeff)
             if not coeff:
                 print(f"skipping team {team_repr} because it has no coeff")
                 continue

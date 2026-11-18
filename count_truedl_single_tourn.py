@@ -11,7 +11,6 @@ from collections import defaultdict
 
 import openpyxl
 import requests
-from mpmath.tests.test_functions import te
 
 RESULTS_URL = (
     "https://api.rating.chgk.info/tournaments/{id}/results.json"
@@ -119,9 +118,34 @@ def parse_xlsx(filepath):
     return result
 
 
+def parse_tours_results(xlsx_file_path):
+    wb = openpyxl.load_workbook(xlsx_file_path)
+    sheet = wb.active
+    rows = iter(sheet.rows)
+    next(rows)
+    result = []
+    for row_ in rows:
+        row = [c.value for c in row_]
+        if row[0] is None:
+            continue
+        mask = "".join(str(int(x or 0)) for x in row[3:])
+        result.append(
+            {
+                "team": {"id": row[0]},
+                "current": {"name": row[1]},
+                "mask": mask,
+                "questionsTotal": mask.count("1"),
+            }
+        )
+    return result
+
+
 def parse_detailed_results(xlsx_file_path):
     wb = openpyxl.load_workbook(xlsx_file_path)
     sheet = wb.active
+    first_row = next(sheet.rows)
+    if first_row[0].value == "Team ID":
+        return parse_tours_results(xlsx_file_path)
     header = None
     result = defaultdict(
         lambda: {

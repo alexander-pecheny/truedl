@@ -6,13 +6,13 @@
 
 ## Как посчитать конкретный турнир
 
-Можно использовать скрипт `count_truedl_single_tourn.py`. Перед использованием установить зависимости: `pip install openpyxl requests`
+Можно использовать скрипт `count_truedl_single_tourn.py`. Перед использованием установите зависимости: `uv sync`, а затем запускайте скрипты через `uv run`.
 
 **Базовое использование:**
 
-`python count_truedl_single_tourn.py -t 9372` — посчитает trueDL (а заодно и старый DL, для сравнения) [турнира с id 9372](https://rating.chgk.info/tournament/9372) — целиком и отдельно по турам. Но это не так интересно: trueDL и так показывают на [сайте рейтинга](https://rating.chgk.gg), а для турниров с выложенными пакетами — и на [gotquestions](https://gotquestions.online).
+`uv run python count_truedl_single_tourn.py -t 9372` — посчитает trueDL (а заодно и старый DL, для сравнения) [турнира с id 9372](https://rating.chgk.info/tournament/9372) — целиком и отдельно по турам. Но это не так интересно: trueDL и так показывают на [сайте рейтинга](https://rating.chgk.gg), а для турниров с выложенными пакетами — и на [gotquestions](https://gotquestions.online).
 
-`python count_truedl_single_tourn.py -t 9372 -q 46-60` — посчитает trueDL конкретного промежутка вопросов. Это может быть полезно для организаторов, чтобы узнать, какой примерно по сложности будет синхрон на базе очника. Можно указывать несколько промежутков, а также отдельные вопросы через запятую: `-q 1,5-8,11-15,23,32`.
+`uv run python count_truedl_single_tourn.py -t 9372 -q 46-60` — посчитает trueDL конкретного промежутка вопросов. Это может быть полезно для организаторов, чтобы узнать, какой примерно по сложности будет синхрон на базе очника. Можно указывать несколько промежутков, а также отдельные вопросы через запятую: `-q 1,5-8,11-15,23,32`.
 
 **Если результаты турнира ещё не открыты, а сложность посчитать хочется, можно выкачать с турнирного сайта результаты турнира вот так:**
 
@@ -22,8 +22,8 @@
 
 Пример запуска по всему турниру:
 
-`python count_truedl_single_tourn.py -t 9372 --results_from_xlsx ~/Downloads/tournament-9372.xlsx`
+`uv run python count_truedl_single_tourn.py -t 9372 --results_from_xlsx ~/Downloads/tournament-9372.xlsx`
 
 Пример запуска по промежутку результатов:
 
-`python count_truedl_single_tourn.py -q 46-60 -t 9372 --results_from_xlsx ~/Downloads/tournament-9372.xlsx --results_from_xlsx_detailed ~/Downloads/tournament-tours-9372-19-Jan-2024.xlsx`
+`uv run python count_truedl_single_tourn.py -q 46-60 -t 9372 --results_from_xlsx ~/Downloads/tournament-9372.xlsx --results_from_xlsx_detailed ~/Downloads/tournament-tours-9372-19-Jan-2024.xlsx`
